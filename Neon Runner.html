@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dodge Arcade</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* --- CSS STYLES --- */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background-color: #0b0c10;
+            color: #c5c6c7;
+            font-family: 'Orbitron', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .game-wrapper {
+            position: relative;
+            width: 700px;
+            max-width: 95%;
+            aspect-ratio: 7 / 5;
+            background-color: #1f2833;
+            border: 3px solid #45a29e;
+            box-shadow: 0 0 25px rgba(69, 162, 158, 0.4);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, #1f2833 0%, #0b0c10 100%);
+        }
+
+        #hud {
+            position: absolute;
+            top: 15px;
+            left: 20px;
+            font-size: 20px;
+            font-weight: 700;
+            color: #66fcf1;
+            text-shadow: 0 0 10px rgba(102, 252, 241, 0.8);
+            z-index: 5;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(11, 12, 16, 0.85);
+            backdrop-filter: blur(4px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 10;
+            transition: opacity 0.3s ease;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .glow-text {
+            font-size: 48px;
+            color: #66fcf1;
+            text-shadow: 0 0 10px #66fcf1, 0 0 20px #45a29e;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+        }
+
+        .error-text {
+            color: #ff3b30;
+            text-shadow: 0 0 10px #ff3b30, 0 0 20px #c21807;
+        }
+
+        .subtitle {
+            font-size: 18px;
+            color: #c5c6c7;
+            margin-bottom: 30px;
+        }
+
+        .controls-box, .stats-box {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 15px 30px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            font-size: 16px;
+            line-height: 1.6;
+        }
+
+        .stats-box p {
+            font-size: 22px;
+            margin: 10px 0;
+            color: #fff;
+        }
+
+        .arcade-btn {
+            background: transparent;
+            color: #66fcf1;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            padding: 15px 40px;
+            border: 2px solid #66fcf1;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(102, 252, 241, 0.3), inset 0 0 10px rgba(102, 252, 241, 0.2);
+            transition: all 0.2s ease-in-out;
+            text-transform: uppercase;
+        }
+
+        .arcade-btn:hover {
+            background: #66fcf1;
+            color: #0b0c10;
+            box-shadow: 0 0 20px rgba(102, 252, 241, 0.8);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- --- HTML STRUCTURE --- -->
+    <div class="game-wrapper">
+        <div id="hud" class="hidden">
+            <div class="score-text">Score: <span id="currentScore">0</span></div>
+        </div>
+
+        <canvas id="gameCanvas" width="700" height="500"></canvas>
+
+        <div id="menuScreen" class="overlay">
+            <h1 class="glow-text">DODGE ARCADE</h1>
+            <p class="subtitle">Survive the cosmic barrage!</p>
+            
+            <div class="controls-box">
+                <p><b>Controls:</b></p>
+                <p>A / D or ⬅️ / ➡️ to move</p>
+            </div>
+
+            <button id="startBtn" class="arcade-btn">START GAME</button>
+        </div>
+
+        <div id="gameOverScreen" class="overlay hidden">
+            <h1 class="glow-text error-text">GAME OVER</h1>
+            
+            <div class="stats-box">
+                <p>Score: <span id="finalScore">0</span></p>
+                <p>Best Score: <span id="bestScore">0</span></p>
+            </div>
+
+            <button id="restartBtn" class="arcade-btn">PLAY AGAIN</button>
+        </div>
+    </div>
+
+    <!-- --- JAVASCRIPT LOGIC --- -->
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const hud = document.getElementById('hud');
+        const menuScreen = document.getElementById('menuScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const currentScoreDisplay = document.getElementById('currentScore');
+        const finalScoreDisplay = document.getElementById('finalScore');
+        const bestScoreDisplay = document.getElementById('bestScore');
+
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+
+        const STATES = { MENU: 0, PLAYING: 1, GAME_OVER: 2 };
+        let currentState = STATES.MENU;
+
+        let score = 0;
+        let timeSurvived = 0; 
+        let bestScore = 0;
+        let animationFrameId;
+        let lastTime = 0;
+
+        let spawnTimer = 0;
+        let currentSpawnInterval = 1000;
+        let obstacleBaseSpeed = 3;
+
+        let player = {};
+        let obstacles = [];
+        let stars = [];
+
+        const keys = { left: false, right: false };
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = true;
+            if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = false;
+            if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = false;
+        });
+
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', restartGame);
+
+        function init() {
+            try {
+                let savedData = localStorage.getItem('dodgeArcadeBestScore');
+                if (savedData) bestScore = parseInt(savedData);
+            } catch (e) {
+                console.warn("LocalStorage not available.");
+            }
+            createStars();
+            draw();
+        }
+
+        function startGame() {
+            currentState = STATES.PLAYING;
+            
+            score = 0;
+            timeSurvived = 0;
+            spawnTimer = 0;
+            currentSpawnInterval = 800;
+            obstacleBaseSpeed = 3;
+            obstacles = [];
+
+            player = {
+                width: 30,
+                height: 30,
+                x: canvas.width / 2 - 15,
+                y: canvas.height - 50,
+                speed: 6,
+                color: '#66fcf1'
+            };
+
+            menuScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            hud.classList.remove('hidden');
+            updateHUD();
+
+            lastTime = performance.now();
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        function createStars() {
+            stars = [];
+            for (let i = 0; i < 60; i++) {
+                stars.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    size: Math.random() * 2 + 1,
+                    speed: Math.random() * 1.5 + 0.5,
+                    alpha: Math.random() * 0.5 + 0.3
+                });
+            }
+        }
+
+        function gameLoop(timestamp) {
+            if (currentState !== STATES.PLAYING) return;
+
+            let deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
+
+            update(deltaTime);
+            draw();
+
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        function update(deltaTime) {
+            timeSurvived += deltaTime;
+            score = Math.floor(timeSurvived / 100); 
+            updateHUD();
+
+            currentSpawnInterval = Math.max(250, 800 - (timeSurvived / 100));
+            obstacleBaseSpeed = 3 + (timeSurvived / 15000);
+
+            if (keys.left) player.x -= player.speed;
+            if (keys.right) player.x += player.speed;
+
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+
+            stars.forEach(star => {
+                star.y += star.speed;
+                if (star.y > canvas.height) {
+                    star.y = 0;
+                    star.x = Math.random() * canvas.width;
+                }
+            });
+
+            spawnTimer += deltaTime;
+            if (spawnTimer >= currentSpawnInterval) {
+                spawnObstacle();
+                spawnTimer = 0;
+            }
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.y += obs.speed;
+
+                if (checkCollision(player, obs)) {
+                    endGame();
+                    return;
+                }
+
+                if (obs.y > canvas.height) {
+                    obstacles.splice(i, 1);
+                }
+            }
+        }
+
+        function spawnObstacle() {
+            let size = Math.random() * 30 + 20;
+            let xPos = Math.random() * (canvas.width - size);
+            
+            obstacles.push({
+                x: xPos,
+                y: -size,
+                width: size,
+                height: size,
+                speed: obstacleBaseSpeed + Math.random() * 2,
+                color: '#ff3b30'
+            });
+        }
+
+        function checkCollision(rect1, rect2) {
+            return (
+                rect1.x < rect2.x + rect2.width &&
+                rect1.x + rect1.width > rect2.x &&
+                rect1.y < rect2.y + rect2.height &&
+                rect1.y + rect1.height > rect2.y
+            );
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            stars.forEach(star => {
+                ctx.fillStyle = `rgba(255, 255, 255, ${star.alpha})`;
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            if (currentState === STATES.PLAYING) {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = player.color;
+                ctx.fillStyle = player.color;
+                
+                ctx.beginPath();
+                ctx.moveTo(player.x + player.width / 2, player.y);
+                ctx.lineTo(player.x + player.width, player.y + player.height);
+                ctx.lineTo(player.x, player.y + player.height);
+                ctx.closePath();
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                obstacles.forEach(obs => {
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = obs.color;
+                    ctx.fillStyle = obs.color;
+                    
+                    ctx.beginPath();
+                    if (ctx.roundRect) {
+                        ctx.roundRect(obs.x, obs.y, obs.width, obs.height, 4);
+                    } else {
+                        ctx.rect(obs.x, obs.y, obs.width, obs.height);
+                    }
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                });
+            }
+        }
+
+        function updateHUD() {
+            currentScoreDisplay.innerText = score;
+        }
+
+        function endGame() {
+            currentState = STATES.GAME_OVER;
+            cancelAnimationFrame(animationFrameId);
+            
+            saveBestScore();
+            
+            hud.classList.add('hidden');
+            gameOverScreen.classList.remove('hidden');
+            finalScoreDisplay.innerText = score;
+            bestScoreDisplay.innerText = bestScore;
+        }
+
+        function saveBestScore() {
+            if (score > bestScore) {
+                bestScore = score;
+                try {
+                    localStorage.setItem('dodgeArcadeBestScore', bestScore);
+                } catch (e) {
+                    console.warn("Could not save to LocalStorage.");
+                }
+            }
+        }
+
+        function restartGame() {
+            startGame();
+        }
+
+        init();
+    </script>
+</body>
+</html>

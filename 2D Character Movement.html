@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Character Movement - Girl</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f0f4f8; /* خلفية فاتحة وأكثر حيوية */
+            color: #2c3e50;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden; 
+        }
+
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 1000px;
+            padding: 20px;
+        }
+
+        #ui-layer {
+            text-align: center;
+            margin-bottom: 15px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        #ui-layer h1 {
+            margin: 0 0 5px 0;
+            font-size: 32px;
+            color: #ff6b81; /* لون ناعم ومناسب للشخصية */
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .instructions {
+            margin: 0;
+            font-size: 18px;
+            color: #7f8c8d;
+        }
+
+        canvas {
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            border: 4px solid #fff;
+            max-width: 100%;
+            height: auto;
+            object-fit: contain;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="ui-layer">
+            <h1>2D Character Movement</h1>
+            <p class="instructions">Controls: <b>A / D</b> or <b>Arrows</b> to Move | <b>W / Up / Space</b> to Jump</p>
+        </div>
+        
+        <canvas id="gameCanvas" width="900" height="500"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const WORLD_WIDTH = 1600; 
+        const WORLD_HEIGHT = canvas.height;
+
+        // --- كائن اللاعب (الفتاة) ---
+        const player = {
+            x: 100,
+            y: 300,
+            // أبعاد مناسبة لشخصية فتاة صغيرة
+            width: 45, 
+            height: 60,
+            vx: 0,           
+            vy: 0,           
+            speed: 5.5,        
+            jumpForce: 12.5,   
+            color: '#fff', // سيتم استخدام تدرجات للرسم
+            grounded: false  
+        };
+
+        const gravity = 0.6;
+        const friction = 0.85; 
+
+        // --- المنصات بتدرجات لونية ---
+        const platforms = [
+            // الأرضية (عشب وحجر)
+            { x: 0, y: 450, w: WORLD_WIDTH, h: 50, color: ctx.createLinearGradient(0, 450, 0, 500) },
+            // منصات عائمة
+            { x: 300, y: 350, w: 150, h: 20, color: ctx.createLinearGradient(0, 350, 0, 370) },
+            { x: 550, y: 250, w: 150, h: 20, color: ctx.createLinearGradient(0, 250, 0, 270) },
+            { x: 800, y: 150, w: 150, h: 20, color: ctx.createLinearGradient(0, 150, 0, 170) },
+            { x: 1050, y: 250, w: 150, h: 20, color: ctx.createLinearGradient(0, 250, 0, 270) },
+            { x: 1300, y: 350, w: 150, h: 20, color: ctx.createLinearGradient(0, 350, 0, 370) },
+        ];
+        
+        // إعداد تدرجات ألوان المنصات
+        platforms.forEach(p => {
+            if (p.h > 20) { // الأرضية
+                p.color.addColorStop(0, '#2ecc71'); // عشب
+                p.color.addColorStop(0.2, '#27ae60');
+                p.color.addColorStop(0.21, '#7f8c8d'); // حجر
+                p.color.addColorStop(1, '#34495e');
+            } else { // العائمة
+                p.color.addColorStop(0, '#e67e22'); // لون رملي غامق
+                p.color.addColorStop(1, '#d35400');
+            }
+        });
+
+        const keys = {
+            left: false,
+            right: false,
+            jump: false
+        };
+
+        const camera = {
+            x: 0,
+            y: 0
+        };
+
+        // --- السحب الخلفية ---
+        const clouds = [
+            { x: 100, y: 80, w: 100, h: 50, speed: 0.2 },
+            { x: 400, y: 50, w: 150, h: 70, speed: 0.15 },
+            { x: 700, y: 100, w: 80, h: 40, speed: 0.25 },
+            { x: 1000, y: 60, w: 120, h: 60, speed: 0.18 },
+            { x: 1300, y: 90, w: 90, h: 45, speed: 0.22 },
+        ];
+
+        window.addEventListener('keydown', (e) => {
+            if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
+                e.preventDefault();
+            }
+
+            if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = true;
+            if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = true;
+            
+            if (e.code === 'KeyW' || e.code === 'ArrowUp' || e.code === 'Space') {
+                if (player.grounded) {
+                    player.vy = -player.jumpForce;
+                    player.grounded = false;
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = false;
+            if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = false;
+        });
+
+        function update() {
+            // تحريك السحب
+            clouds.forEach(c => {
+                c.x += c.speed;
+                if (c.x > WORLD_WIDTH) c.x = -c.w;
+            });
+
+            if (keys.left) player.vx -= 1.1;
+            if (keys.right) player.vx += 1.1;
+
+            player.vx *= friction;
+            
+            if (player.vx > player.speed) player.vx = player.speed;
+            if (player.vx < -player.speed) player.vx = -player.speed;
+
+            player.vy += gravity;
+
+            player.x += player.vx;
+            player.y += player.vy;
+
+            // الحدود
+            if (player.x < 0) {
+                player.x = 0;
+                player.vx = 0;
+            }
+            if (player.x + player.width > WORLD_WIDTH) {
+                player.x = WORLD_WIDTH - player.width;
+                player.vx = 0;
+            }
+            if (player.y > WORLD_HEIGHT + 100) { // إعادة التعيين عند السقوط
+                player.x = 100;
+                player.y = 300;
+                player.vx = 0;
+                player.vy = 0;
+            }
+
+            player.grounded = false; 
+
+            // تصادم المنصات
+            for (let i = 0; i < platforms.length; i++) {
+                let p = platforms[i];
+                if (player.vy >= 0) {
+                    let withinX = player.x + player.width > p.x && player.x < p.x + p.w;
+                    let crossingTopEdge = player.y + player.height >= p.y && 
+                                          (player.y + player.height - player.vy) <= p.y + 1; 
+
+                    if (withinX && crossingTopEdge) {
+                        player.y = p.y - player.height;
+                        player.vy = 0; 
+                        player.grounded = true; 
+                    }
+                }
+            }
+
+            // تحديث الكاميرا
+            let targetCameraX = player.x - canvas.width / 2 + player.width / 2;
+            if (targetCameraX < 0) targetCameraX = 0;
+            if (targetCameraX > WORLD_WIDTH - canvas.width) targetCameraX = WORLD_WIDTH - canvas.width;
+            camera.x = targetCameraX;
+        }
+
+        // --- وظيفة رسم الفتاة الصغيرة ---
+        function drawGirl(x, y, w, h) {
+            ctx.save();
+            ctx.translate(x, y);
+
+            // الشعر
+            ctx.fillStyle = '#6f4e37'; // بني
+            ctx.beginPath();
+            ctx.arc(w / 2, h * 0.25, h * 0.25, 0, Math.PI * 2);
+            ctx.fill();
+            // ذيل حصان (بسيط)
+            ctx.beginPath();
+            ctx.arc(w * 0.8, h * 0.15, h * 0.15, 0, Math.PI * 2);
+            ctx.fill();
+
+            // الرأس
+            ctx.fillStyle = '#ffe0bd'; // لون البشرة
+            ctx.beginPath();
+            ctx.arc(w / 2, h * 0.35, h * 0.2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // الفستان
+            ctx.fillStyle = '#ff6b81'; // وردي
+            ctx.beginPath();
+            ctx.moveTo(w * 0.2, h * 0.5);
+            ctx.lineTo(w * 0.8, h * 0.5);
+            ctx.lineTo(w, h * 0.9);
+            ctx.lineTo(0, h * 0.9);
+            ctx.closePath();
+            ctx.fill();
+
+            // العيون
+            ctx.fillStyle = 'white';
+            let eyeOffsetX = (player.vx > 0.5) ? 3 : (player.vx < -0.5) ? -3 : 0;
+            
+            if (player.grounded || player.vy < 0) { // مفتوحة
+                // العين اليسرى
+                ctx.beginPath(); ctx.arc(w * 0.35 + eyeOffsetX, h * 0.35, h * 0.05, 0, Math.PI * 2); ctx.fill();
+                // العين اليمنى
+                ctx.beginPath(); ctx.arc(w * 0.65 + eyeOffsetX, h * 0.35, h * 0.05, 0, Math.PI * 2); ctx.fill();
+                // الحدقة
+                ctx.fillStyle = 'black';
+                ctx.beginPath(); ctx.arc(w * 0.37 + eyeOffsetX, h * 0.35, h * 0.02, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(w * 0.67 + eyeOffsetX, h * 0.35, h * 0.02, 0, Math.PI * 2); ctx.fill();
+            } else { // غامزة (عند القفز)
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(w * 0.3, h * 0.35); ctx.lineTo(w * 0.4, h * 0.35); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(w * 0.6, h * 0.35); ctx.lineTo(w * 0.7, h * 0.35); ctx.stroke();
+            }
+
+            // الحذاء (بسيط)
+            ctx.fillStyle = '#d35400';
+            ctx.fillRect(w * 0.1, h * 0.9, w * 0.3, h * 0.1);
+            ctx.fillRect(w * 0.6, h * 0.9, w * 0.3, h * 0.1);
+
+            ctx.restore();
+        }
+
+        // --- وظيفة رسم السحب ---
+        function drawCloud(c) {
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(c.x + c.w*0.3, c.y + c.h*0.5, c.h*0.5, Math.PI*0.5, Math.PI*1.5);
+            ctx.arc(c.x + c.w*0.6, c.y + c.h*0.3, c.h*0.4, Math.PI, Math.PI*2);
+            ctx.arc(c.x + c.w*0.9, c.y + c.h*0.5, c.h*0.5, Math.PI*1.5, Math.PI*0.5);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        function draw() {
+            // تدرج لون السماء
+            let skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            skyGradient.addColorStop(0, '#87CEEB'); // أزرق سماوي فاتح
+            skyGradient.addColorStop(1, '#e0f7fa'); // أزرق فاتح جداً
+            ctx.fillStyle = skyGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(-camera.x, -camera.y);
+
+            // رسم السحب
+            clouds.forEach(drawCloud);
+
+            // رسم المنصات
+            for (let i = 0; i < platforms.length; i++) {
+                let p = platforms[i];
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, p.w, p.h);
+                // حافة خضراء للمنصات العائمة
+                if (p.h < 25) {
+                    ctx.fillStyle = '#2ecc71';
+                    ctx.fillRect(p.x, p.y, p.w, 4);
+                }
+            }
+
+            // رسم الفتاة
+            drawGirl(player.x, player.y, player.width, player.height);
+
+            ctx.restore();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>

@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coin Collector - Neon Edition</title>
+    <style>
+        /* --- CSS STYLES --- */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #0d0e15; /* خلفية داكنة جداً */
+            background-image: radial-gradient(circle at 50% 50%, #1a1c29 0%, #0d0e15 100%);
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .game-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 900px;
+            padding: 20px;
+        }
+
+        /* HUD - تأثير الزجاج (Glassmorphism) */
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            width: 800px;
+            max-width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            padding: 15px 30px;
+            border-radius: 12px 12px 0 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-bottom: none;
+            font-size: 22px;
+            font-weight: bold;
+            box-shadow: 0 -5px 20px rgba(0, 255, 204, 0.1);
+        }
+
+        .stat span {
+            color: #00ffcc;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.8);
+        }
+
+        #scoreDisplay { color: #FFD700; text-shadow: 0 0 10px rgba(255, 215, 0, 0.8); }
+        #livesDisplay { color: #ff3366; text-shadow: 0 0 10px rgba(255, 51, 102, 0.8); }
+
+        .canvas-container {
+            position: relative;
+            width: 800px;
+            max-width: 100%;
+            aspect-ratio: 800 / 450;
+            border-radius: 0 0 12px 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8), 0 0 20px rgba(0, 255, 204, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* شاشة النهاية (تأثير ضبابي احترافي) */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(13, 14, 21, 0.85);
+            backdrop-filter: blur(8px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 10;
+            opacity: 1;
+            transition: opacity 0.3s ease;
+        }
+
+        .overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .overlay h1 {
+            font-size: 55px;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
+
+        .overlay p {
+            font-size: 26px;
+            margin-bottom: 35px;
+            color: #e0e0e0;
+        }
+
+        /* زر إعادة اللعب بتصميم النيون */
+        #restartBtn {
+            background: linear-gradient(45deg, #00ffcc, #00b3aa);
+            color: #000;
+            border: none;
+            padding: 15px 40px;
+            font-size: 20px;
+            font-weight: bold;
+            font-family: inherit;
+            cursor: pointer;
+            border-radius: 30px;
+            box-shadow: 0 5px 20px rgba(0, 255, 204, 0.4);
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #restartBtn:hover {
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 8px 25px rgba(0, 255, 204, 0.6);
+        }
+
+        .instructions {
+            margin-top: 25px;
+            text-align: center;
+            color: #8892b0;
+            line-height: 1.8;
+            font-size: 15px;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 15px;
+            border-radius: 8px;
+            width: 800px;
+            max-width: 100%;
+        }
+        
+        .instructions b {
+            color: #00ffcc;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- --- HTML STRUCTURE --- -->
+    <div class="game-wrapper">
+        <div class="hud">
+            <div class="stat">Score: <span id="scoreDisplay">0</span></div>
+            <div class="stat">Lives: <span id="livesDisplay">3</span></div>
+            <div class="stat">Time: <span id="timeDisplay">30</span></div>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="gameCanvas" width="800" height="450"></canvas>
+            
+            <div id="gameOverScreen" class="overlay hidden">
+                <h1 id="resultTitle">GAME OVER</h1>
+                <p>Final Score: <span id="finalScore">0</span></p>
+                <button id="restartBtn">Play Again</button>
+            </div>
+        </div>
+
+        <div class="instructions">
+            <p><b>Controls:</b> W, A, S, D or Arrow Keys to move.</p>
+            <p><b>Objective:</b> Collect all gold coins before time runs out. Avoid the red enemies!</p>
+        </div>
+    </div>
+
+    <!-- --- JAVASCRIPT LOGIC --- -->
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const livesDisplay = document.getElementById('livesDisplay');
+        const timeDisplay = document.getElementById('timeDisplay');
+
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const resultTitle = document.getElementById('resultTitle');
+        const finalScore = document.getElementById('finalScore');
+        const restartBtn = document.getElementById('restartBtn');
+
+        let score = 0;
+        let lives = 3;
+        let time = 30;
+        let isGameOver = false;
+        let gameLoopId;
+        let timerId;
+
+        const keys = {
+            w: false, a: false, s: false, d: false,
+            ArrowUp: false, ArrowLeft: false, ArrowDown: false, ArrowRight: false
+        };
+
+        window.addEventListener('keydown', (e) => {
+            if (keys.hasOwnProperty(e.key)) {
+                keys[e.key] = true;
+                if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].indexOf(e.key) > -1) {
+                    e.preventDefault();
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (keys.hasOwnProperty(e.key)) {
+                keys[e.key] = false;
+            }
+        });
+
+        restartBtn.addEventListener('click', restart);
+
+        let player = {};
+        let coins = [];
+        let enemies = [];
+
+        function initGame() {
+            score = 0;
+            lives = 3;
+            time = 30;
+            isGameOver = false;
+
+            player = {
+                x: 50,
+                y: canvas.height / 2 - 15,
+                width: 30,
+                height: 30,
+                speed: 5.5,
+                color: '#00ffcc'
+            };
+
+            coins = [];
+            for (let row = 0; row < 4; row++) {
+                for (let col = 0; col < 6; col++) {
+                    coins.push({
+                        x: 200 + col * 90,
+                        y: 80 + row * 90,
+                        width: 24,
+                        height: 24,
+                        collected: false
+                    });
+                }
+            }
+
+            enemies = [
+                { x: 300, y: 50, width: 35, height: 35, speed: 3.5, dir: 1, minX: 150, maxX: 750 },
+                { x: 600, y: 160, width: 35, height: 35, speed: 5, dir: -1, minX: 150, maxX: 750 },
+                { x: 400, y: 270, width: 35, height: 35, speed: 4, dir: 1, minX: 150, maxX: 750 },
+                { x: 500, y: 380, width: 35, height: 35, speed: 5.5, dir: -1, minX: 150, maxX: 750 }
+            ];
+
+            updateUI();
+            gameOverScreen.classList.add('hidden');
+
+            clearInterval(timerId);
+            timerId = setInterval(updateTimer, 1000);
+
+            cancelAnimationFrame(gameLoopId);
+            gameLoopId = requestAnimationFrame(update);
+        }
+
+        function update() {
+            if (isGameOver) return;
+
+            // حركة اللاعب
+            if (keys.w || keys.ArrowUp) player.y -= player.speed;
+            if (keys.s || keys.ArrowDown) player.y += player.speed;
+            if (keys.a || keys.ArrowLeft) player.x -= player.speed;
+            if (keys.d || keys.ArrowRight) player.x += player.speed;
+
+            // الحدود
+            if (player.x < 0) player.x = 0;
+            if (player.y < 0) player.y = 0;
+            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+            if (player.y + player.height > canvas.height) player.y = canvas.height - player.height;
+
+            // حركة الأعداء
+            for (let i = 0; i < enemies.length; i++) {
+                let enemy = enemies[i];
+                enemy.x += enemy.speed * enemy.dir;
+
+                if (enemy.x <= enemy.minX || enemy.x + enemy.width >= enemy.maxX) {
+                    enemy.dir *= -1; 
+                }
+            }
+
+            checkCollisions();
+            draw();
+
+            gameLoopId = requestAnimationFrame(update);
+        }
+
+        function checkCollisions() {
+            for (let i = 0; i < coins.length; i++) {
+                let coin = coins[i];
+                if (!coin.collected) {
+                    if (isColliding(player, coin)) {
+                        coin.collected = true;
+                        score += 10;
+                        updateUI();
+                        checkWin();
+                    }
+                }
+            }
+
+            for (let i = 0; i < enemies.length; i++) {
+                let enemy = enemies[i];
+                if (isColliding(player, enemy)) {
+                    lives -= 1;
+                    updateUI();
+                    
+                    if (lives <= 0) {
+                        gameOver();
+                    } else {
+                        resetPlayerPosition();
+                    }
+                }
+            }
+        }
+
+        // الكشف عن التصادم
+        function isColliding(rect1, rect2) {
+            return (
+                rect1.x < rect2.x + rect2.width &&
+                rect1.x + rect1.width > rect2.x &&
+                rect1.y < rect2.y + rect2.height &&
+                rect1.y + rect1.height > rect2.y
+            );
+        }
+
+        function resetPlayerPosition() {
+            player.x = 50;
+            player.y = canvas.height / 2 - 15;
+        }
+
+        // وظيفة الرسم بمؤثرات جمالية
+        function draw() {
+            // 1. رسم خلفية متدرجة
+            let bgGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            bgGradient.addColorStop(0, '#0f0c29');
+            bgGradient.addColorStop(0.5, '#302b63');
+            bgGradient.addColorStop(1, '#24243e');
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 2. شبكة خفيفة جداً لإعطاء طابع كلاسيكي (Arcade)
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < canvas.width; i += 40) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
+            }
+            for (let i = 0; i < canvas.height; i += 40) {
+                ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke();
+            }
+
+            // حساب وقت للانيميشن
+            let timePulse = Math.sin(Date.now() / 200) * 2; 
+
+            // 3. رسم العملات (ذهبية وتنبض مع توهج)
+            for (let i = 0; i < coins.length; i++) {
+                let coin = coins[i];
+                if (!coin.collected) {
+                    let centerX = coin.x + coin.width / 2;
+                    let centerY = coin.y + coin.height / 2;
+                    let radius = (coin.width / 2) + (timePulse * 0.5); // نبض خفيف
+
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = '#FFD700';
+                    ctx.fillStyle = '#FFD700';
+                    
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // لون داخلي للعملة
+                    ctx.fillStyle = '#FFA500';
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, radius * 0.5, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.shadowBlur = 0; // إعادة التعيين
+                }
+            }
+
+            // 4. رسم الأعداء (صناديق نيون حمراء/برتقالية غاضبة)
+            for (let i = 0; i < enemies.length; i++) {
+                let enemy = enemies[i];
+                
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#ff3366';
+                
+                let enemyGrad = ctx.createLinearGradient(enemy.x, enemy.y, enemy.x, enemy.y + enemy.height);
+                enemyGrad.addColorStop(0, '#ff3366');
+                enemyGrad.addColorStop(1, '#800000');
+                
+                ctx.fillStyle = enemyGrad;
+                ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+                
+                // عيون الأعداء (تعتمد على اتجاه حركتهم)
+                ctx.shadowBlur = 5;
+                ctx.shadowColor = 'white';
+                ctx.fillStyle = 'white';
+                let eyeOffset = enemy.dir === 1 ? 5 : -5;
+                
+                // شكل عيون حادة (غاضبة)
+                ctx.beginPath();
+                ctx.moveTo(enemy.x + 8 + eyeOffset, enemy.y + 8);
+                ctx.lineTo(enemy.x + 15 + eyeOffset, enemy.y + 12);
+                ctx.lineTo(enemy.x + 8 + eyeOffset, enemy.y + 14);
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.moveTo(enemy.x + 27 + eyeOffset, enemy.y + 8);
+                ctx.lineTo(enemy.x + 20 + eyeOffset, enemy.y + 12);
+                ctx.lineTo(enemy.x + 27 + eyeOffset, enemy.y + 14);
+                ctx.fill();
+
+                ctx.shadowBlur = 0;
+            }
+
+            // 5. رسم اللاعب (دائرة نيون سماوية مشعة)
+            let pCenterX = player.x + player.width / 2;
+            let pCenterY = player.y + player.height / 2;
+            let pRadius = player.width / 2;
+
+            ctx.shadowBlur = 25;
+            ctx.shadowColor = player.color;
+            ctx.fillStyle = player.color;
+            
+            ctx.beginPath();
+            ctx.arc(pCenterX, pCenterY, pRadius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // نواة اللاعب (قلب أبيض متوهج)
+            ctx.fillStyle = '#ffffff';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(pCenterX, pCenterY, pRadius * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.shadowBlur = 0;
+        }
+
+        function updateUI() {
+            scoreDisplay.innerText = score;
+            livesDisplay.innerText = lives;
+            timeDisplay.innerText = time;
+        }
+
+        function updateTimer() {
+            if (isGameOver) return;
+            time -= 1;
+            updateUI();
+
+            if (time <= 0) {
+                gameOver();
+            }
+        }
+
+        function checkWin() {
+            const uncollectedCoinsExist = coins.some(coin => !coin.collected);
+            if (!uncollectedCoinsExist) {
+                winGame();
+            }
+        }
+
+        function gameOver() {
+            isGameOver = true;
+            clearInterval(timerId);
+            
+            resultTitle.innerText = "GAME OVER";
+            resultTitle.style.color = "#ff3366";
+            resultTitle.style.textShadow = "0 0 20px rgba(255, 51, 102, 0.8)";
+            finalScore.innerText = score;
+            
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        function winGame() {
+            isGameOver = true;
+            clearInterval(timerId); 
+            
+            resultTitle.innerText = "YOU WIN!";
+            resultTitle.style.color = "#00ffcc";
+            resultTitle.style.textShadow = "0 0 20px rgba(0, 255, 204, 0.8)";
+            finalScore.innerText = score;
+            
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        function restart() {
+            initGame();
+        }
+
+        // بدء اللعبة
+        initGame();
+    </script>
+</body>
+</html>
